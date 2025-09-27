@@ -1,35 +1,44 @@
+
 from ..graph.state import AgentState
-from ..tools.api import get_price_history
-from ..graph import state
+from ..tools.api import get_price_history, get_latest_price
 
 def analyze(state: AgentState) -> AgentState:
+    """DCF-lite Valuation Agent"""
     try:
-        hist = get_price_history(state.ticker, period="3mo")
+        ticker = state.ticker
+        price = state.price or get_latest_price(ticker)
+        hist = get_price_history(ticker, period="6mo")
 
-        if hist.empty or len(hist) < 30:
-            state.signals["Valuation"] = "hold"
-            state.reasoning["Valuation"] = "Not enough historical data"
+        if hist is None or hist.empty:
+            state.agent_signal = {"action": "hold", "confidence": 0.5}
+            state.signals["Valuation"] = state.agent_signal
+            state.reasoning["Valuation"] = f"No price history found for {ticker}, default HOLD."
             return state
 
-        
-        ma30 = hist["Close"].rolling(window=30).mean().iloc[-1] # Compute 30-day moving average
+        avg_price = hist["Close"].mean()
+        undervalued = price < 0.9 * avg_price
+        overvalued = price > 1.1 * avg_price
 
-        # Compare current price with MA
-        if state.price < 0.9 * ma30:      
-            signal = "buy"
-            reason = f"Undervalued: price {state.price:.2f} < 90% of 30d avg {ma30:.2f}"
-        elif state.price > 1.1 * ma30:
-            signal = "sell"
-            reason = f"Overvalued: price {state.price:.2f} > 110% of 30d avg {ma30:.2f}"
+        print(f"DEBUG: price={price}, avg_price={avg_price}, hist_empty={hist.empty}")
+
+        if undervalued:
+            action, conf = "buy", 0.7
+        elif overvalued:
+            action, conf = "sell", 0.7
         else:
-            signal = "hold"
-            reason = f"Fairly valued: price {state.price:.2f} ~ 30d avg {ma30:.2f}"
+            action, conf = "hold", 0.6
 
-        # Save to state
-        state.signals["Valuation"] = signal
-        state.reasoning["Valuation"] = reason
+        state.agent_signal = {"action": action, "confidence": conf}
+
+        # Save to state (multi-agent + explanation)
+        state.signals["Valuation"] = state.agent_signal
+        state.reasoning["Valuation"] = (
+            f"Valuation analysis: Current price {price:.2f} vs 6mo avg {avg_price:.2f} → {action.upper()} ({conf*100:.0f}%)"
+        )
+
     except Exception as e:
-        state.signals["Valuation"] = "hold"
+        state.agent_signal = {"action": "hold", "confidence": 0.5}
+        state.signals["Valuation"] = state.agent_signal
         state.reasoning["Valuation"] = f"Error during valuation: {e}"
 
     return state

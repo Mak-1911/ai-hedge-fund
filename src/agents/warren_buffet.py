@@ -1,33 +1,38 @@
+# src/agents/buffett.py
 from ..graph.state import AgentState
-from ..tools.api import get_price_history
+from ..tools.api import get_price_history, get_latest_price
 
 def analyze(state: AgentState) -> AgentState:
-    # Simple Buffett strategy: buy if P/E < 15 and dividend yield > 2%
+    """Warren Buffett Agent — looks for stability and fair price."""
     try:
-        hist = get_price_history(state.ticker, period="6mo")
-        
-        if hist.empty or len(hist) < 30:
-            state.signals["Buffett"] = "hold"
-            state.reasoning["Buffett"] = "Not enough historical data for volatility analysis"
-            return state
-        
-        hist["Return"] = hist["Close"].pct_change()
-        volatility = hist["Return"].std() * 100
-        if volatility < 2:
-            signal = "BUY"
-            reasoning = f"Low volatility ({volatility:.2f}%), Buffett likes stable businesses"
-        elif volatility > 4:
-            signal = "SELL"
-            reasoning = f"High volatility ({volatility:.2f}%), too risky for Buffett"
-        else:
-            signal = "HOLD"
-            reasoning = f"Moderate volatility ({volatility:.2f}%), fairly stable"
+        ticker = state.ticker
+        price = state.price or get_latest_price(ticker)
+        hist = get_price_history(ticker, period="6mo")
 
-        state.signals["Buffet"] = signal
-        state.reasoning["Buffet"] = reasoning
+        if hist is None or hist.empty:
+            state.agent_signal = {"action": "hold", "confidence": 0.5}
+            state.signals["Buffett"] = state.agent_signal
+            state.reasoning["Buffett"] = f"No price history found for {ticker}, default HOLD."
+            return state
+
+        volatility = hist["Close"].pct_change().std() * 100  # % volatility
+
+        if volatility < 2:  # very stable
+            action, conf = "buy", 0.8
+        elif volatility < 5:  # moderate
+            action, conf = "hold", 0.6
+        else:  # too volatile
+            action, conf = "sell", 0.7
+
+        state.agent_signal = {"action": action, "confidence": conf}
+        state.signals["Buffett"] = state.agent_signal
+        state.reasoning["Buffett"] = (
+            f"Volatility = {volatility:.2f}%. Interpreted as {action.upper()} ({conf*100:.0f}%)."
+        )
 
     except Exception as e:
-        state.signals["Buffet"] = "HOLD"
-        state.reasoning["Buffet"] = f"Error During Buffet Analysis: {e}"
-    
+        state.agent_signal = {"action": "hold", "confidence": 0.5}
+        state.signals["Buffett"] = state.agent_signal
+        state.reasoning["Buffett"] = f"Error during Buffett analysis: {e}"
+
     return state
