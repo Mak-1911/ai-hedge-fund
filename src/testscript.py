@@ -1,9 +1,15 @@
 import yfinance as yf
-from src.metrics import performance
+from src.agents.warren_buffet import analyze
+from src.graph.state import AgentState
 
-data = yf.download("AAPL", period="6mo")
-prices = data["Close"]
+# Create a test state
+state = AgentState(ticker="AAPL", price=250.0, cash=10000.0, holdings=0)
 
-print("Cumulative Return:", performance.cumulative_return(prices))
-print("Sharpe Ratio:", performance.sharpe_ratio(prices))
-print("Max Drawdown:", performance.max_drawdown(prices))
+# Run the Buffett agent analysis
+state = analyze(state)
+
+# Print the results
+print("Agent Signal:", state.agent_signal)
+print("Signals:", state.signals)
+print("Reasoning:", state.reasoning)
+print("Risk:", state.risk)

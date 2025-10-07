@@ -8,6 +8,8 @@ from src.portfolio.manager import PortfolioManager
 from rich.console import Console
 from rich.table import Table
 from src.metrics.runner import MetricsRunner
+import pandas as pd
+from src.backtest.engine import run_backtest
 
 console = Console()
 
@@ -29,6 +31,18 @@ def choose_agent_interactively():
         default="valuation",
     ).execute()
     return agent_name
+
+def summarize_performance(df):
+    returns = df["value"].pct_change().dropna()
+    cumulative = (df["value"].iloc[-1] / df["value"].iloc[0]) - 1
+    sharpe = returns.mean() / returns.std() * (252**0.5) if not returns.empty else 0
+    max_dd = (df["value"] / df["value"].cummax() - 1).min()
+
+    print("\n=== Performance Metrics ===")
+    print(f"Cumulative Return: {cumulative:.3f}")
+    print(f"Sharpe Ratio: {sharpe:.3f}")
+    print(f"Max Drawdown: {max_dd:.3f}")
+
 
 def run_single(ticker: str, agent_name: str, cash_portfolio: float = 10000.0, cash: float = 10000.0):
     price = get_latest_price(ticker)
@@ -82,8 +96,14 @@ def main():
     agent_name = args.agent or choose_agent_interactively()
 
     if args.backtest:
+        agent_module = load_agent_module(agent_name)
         print(f"Running backtest for {args.ticker} with {agent_name} agent...")
-        # TODO: integrate your backtest pipeline
+        results = run_backtest(args.ticker, agent_module, period=args.period, cash=args.cash)
+
+        print("\n=== Backtest Results ===")
+        print(results.tail())
+
+        summarize_performance(results)
     else:
         run_single(args.ticker, agent_name, cash_portfolio=args.cash)
 
